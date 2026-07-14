@@ -2,6 +2,10 @@
 let currentTranscriber = null;
 let isListening = false;
 let subtitlesContainer = null;
+let audioContext = null;
+let mediaStreamAudioSourceNode = null;
+let scriptProcessorNode = null;
+
 let currentSettings = {
   enabled: false,
   language: 'fr-FR',
@@ -126,7 +130,7 @@ function startTranscription() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   
   if (!SpeechRecognition) {
-    displaySubtitle('❌ Web Speech API non disponible dans ce navigateur', 5000);
+    displaySubtitle('❌ Web Speech API non disponible', 5000);
     return;
   }
   
@@ -164,15 +168,17 @@ function startTranscription() {
   };
   
   recognition.onerror = (event) => {
-    console.error('Erreur transcription:', event.error);
+    console.error('Erreur:', event.error);
+    if (event.error === 'no-speech') {
+      // Pas de son détecté, continue l'écoute
+      return;
+    }
     displaySubtitle(`⚠️ Erreur: ${event.error}`, 3000);
   };
   
   recognition.onend = () => {
-    console.log('Transcription terminée');
     if (isListening && currentSettings.enabled) {
-      // Redémarrer automatiquement
-      setTimeout(startTranscription, 1000);
+      setTimeout(startTranscription, 500);
     }
   };
   
@@ -181,14 +187,18 @@ function startTranscription() {
     currentTranscriber = recognition;
   } catch (e) {
     console.error('Erreur démarrage:', e);
-    displaySubtitle('❌ Impossible de démarrer la transcription', 3000);
+    displaySubtitle('❌ Impossible de démarrer', 3000);
     isListening = false;
   }
 }
 
 function stopTranscription() {
   if (currentTranscriber) {
-    currentTranscriber.abort();
+    try {
+      currentTranscriber.abort();
+    } catch (e) {
+      console.log('Error stopping transcriber:', e);
+    }
     currentTranscriber = null;
   }
   isListening = false;
@@ -215,7 +225,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopTranscription();
   } else if (currentSettings.enabled) {
-    startTranscription();
+    setTimeout(startTranscription, 1000);
   }
 });
 
