@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Auto Subtitles",
+  "version": "1.0.0",
+  "description": "Ajoute des sous-titres automatiques aux vidéos avec transcription en temps réel",
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Auto Subtitles"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
