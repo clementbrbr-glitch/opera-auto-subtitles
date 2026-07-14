@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Subtitles</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 350px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+    }
+    
+    .container {
+      padding: 20px;
+    }
+    
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      color: white;
+    }
+    
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .icon {
+      width: 24px;
+      height: 24px;
+      background: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #667eea;
+    }
+    
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #667eea;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+    }
+    
+    .toggle-switch {
+      position: relative;
+      width: 50px;
+      height: 26px;
+      background: #ccc;
+      border-radius: 13px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    
+    .toggle-switch.active {
+      background: #667eea;
+    }
+    
+    .toggle-switch-circle {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: left 0.3s;
+    }
+    
+    .toggle-switch.active .toggle-switch-circle {
+      left: 27px;
+    }
+    
+    .slider-group {
+      margin-bottom: 12px;
+    }
+    
+    .slider-label {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .slider-value {
+      font-weight: 600;
+      color: #667eea;
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #ddd;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+    }
+    
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #5568d3;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #667eea;
+    }
+    
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    
+    .status {
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+      margin-top: 10px;
+      padding: 8px;
+      background: #f9f9f9;
+      border-radius: 4px;
+    }
+    
+    .status.active {
+      color: #4caf50;
+      background: #f1f8f4;
+    }
+    
+    select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #333;
+      background: white;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="icon">CC</div>
+      <h1>Auto Subtitles</h1>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">Transcription</div>
+      <div class="toggle-group">
+        <span class="toggle-label">Activer</span>
+        <div class="toggle-switch" id="toggleSubtitles">
+          <div class="toggle-switch-circle"></div>
+        </div>
+      </div>
+      
+      <div class="slider-group">
+        <div class="slider-label">
+          <span>Langue</span>
+        </div>
+        <select id="languageSelect">
+          <option value="fr-FR">🇫🇷 Français</option>
+          <option value="en-US">🇺🇸 English</option>
+          <option value="es-ES">🇪🇸 Español</option>
+          <option value="de-DE">🇩🇪 Deutsch</option>
+          <option value="it-IT">🇮🇹 Italiano</option>
+          <option value="pt-BR">🇧🇷 Português</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">Apparence</div>
+      
+      <div class="slider-group">
+        <div class="slider-label">
+          <span>Taille du texte</span>
+          <span class="slider-value" id="sizeValue">16px</span>
+        </div>
+        <input type="range" id="fontSize" min="10" max="24" value="16">
+      </div>
+      
+      <div class="slider-group">
+        <div class="slider-label">
+          <span>Opacité</span>
+          <span class="slider-value" id="opacityValue">100%</span>
+        </div>
+        <input type="range" id="opacity" min="20" max="100" value="100">
+      </div>
+      
+      <div class="toggle-group">
+        <span class="toggle-label">Fond noir</span>
+        <div class="toggle-switch" id="toggleBackground">
+          <div class="toggle-switch-circle"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="button-group">
+        <button class="btn-secondary" id="resetBtn">Réinitialiser</button>
+        <button class="btn-primary" id="testBtn">Test</button>
+      </div>
+      <div class="status" id="status">Inactif</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
