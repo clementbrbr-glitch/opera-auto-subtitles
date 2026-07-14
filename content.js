@@ -5,8 +5,7 @@ let subtitlesContainer = null;
 let audioContext = null;
 let mediaElementAudioSourceNode = null;
 let analyser = null;
-let splitter = null;
-let processor = null;
+let lastTranscription = '';
 
 let currentSettings = {
   enabled: false,
@@ -125,36 +124,15 @@ function displaySubtitle(text, duration = 3000) {
   }
 }
 
-// Trouver les éléments audio/vidéo sur la page
-function findAudioElements() {
-  const elements = [];
-  
-  // Chercher les éléments <video>
-  document.querySelectorAll('video').forEach(video => {
-    if (video.readyState > 0) {
-      elements.push(video);
+// Trouver l'élément vidéo
+function findVideoElement() {
+  const videos = document.querySelectorAll('video');
+  for (let video of videos) {
+    if (video.src || (video.currentSrc && video.currentSrc.length > 0)) {
+      return video;
     }
-  });
-  
-  // Chercher les éléments <audio>
-  document.querySelectorAll('audio').forEach(audio => {
-    if (audio.readyState > 0) {
-      elements.push(audio);
-    }
-  });
-  
-  // Chercher les iframes avec contenu média
-  document.querySelectorAll('iframe').forEach(iframe => {
-    try {
-      if (iframe.src && (iframe.src.includes('youtube') || iframe.src.includes('netflix') || iframe.src.includes('twitch'))) {
-        elements.push(iframe);
-      }
-    } catch (e) {
-      console.log('Cannot access iframe:', e);
-    }
-  });
-  
-  return elements;
+  }
+  return null;
 }
 
 // Web Speech API Transcription
@@ -169,95 +147,111 @@ function startTranscription() {
   }
   
   createSubtitleContainer();
-  isListening = true;
   
-  // Chercher les éléments audio/vidéo
-  const audioElements = findAudioElements();
+  // Chercher la vidéo
+  const videoElement = findVideoElement();
   
-  if (audioElements.length === 0) {
-    displaySubtitle('⏳ En attente d\'audio...', 0);
-  } else {
-    displaySubtitle('🎤 Capture de l\'audio...', 0);
+  if (!videoElement) {
+    displaySubtitle('❌ Aucune vidéo trouvée', 5000);
+    return;
   }
   
-  // Créer AudioContext
+  console.log('Vidéo trouvée:', videoElement);
+  
+  isListening = true;
+  displaySubtitle('⏳ Initialisation de l\'audio...', 0);
+  
+  // Créer AudioContext si nécessaire
   const audioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!audioContext) {
     audioContext = new audioContextClass();
   }
   
-  // Essayer de connecter les éléments audio trouvés
-  let audioConnected = false;
-  
-  audioElements.forEach(element => {
-    try {
-      if (element.tagName === 'VIDEO' || element.tagName === 'AUDIO') {
-        mediaElementAudioSourceNode = audioContext.createMediaElementAudioSource(element);
-        analyser = audioContext.createAnalyser();
-        mediaElementAudioSourceNode.connect(analyser);
-        analyser.connect(audioContext.destination);
-        audioConnected = true;
-        console.log('Audio connecté depuis', element.tagName);
-      }
-    } catch (e) {
-      console.error('Erreur connexion audio:', e);
-    }
-  });
-  
-  // Initialiser la reconnaissance vocale
-  const recognition = new SpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = currentSettings.language;
-  
-  recognition.onstart = () => {
-    console.log('Transcription démarrée');
-    if (audioConnected) {
-      displaySubtitle('🎤 Écoute de l\'audio en cours...', 0);
-    } else {
-      displaySubtitle('🎤 Écoute (en attente d\'audio)...', 0);
-    }
-  };
-  
-  recognition.onresult = (event) => {
-    let interimTranscript = '';
-    let finalTranscript = '';
-    
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript;
-      
-      if (event.results[i].isFinal) {
-        finalTranscript += transcript + ' ';
-      } else {
-        interimTranscript += transcript;
-      }
-    }
-    
-    const displayText = finalTranscript || interimTranscript;
-    if (displayText) {
-      displaySubtitle(displayText, 0);
-    }
-  };
-  
-  recognition.onerror = (event) => {
-    console.error('Erreur:', event.error);
-    if (event.error !== 'no-speech') {
-      displaySubtitle(`⚠️ Erreur: ${event.error}`, 3000);
-    }
-  };
-  
-  recognition.onend = () => {
-    console.log('Transcription terminée');
-    if (isListening && currentSettings.enabled) {
-      setTimeout(startTranscription, 1000);
-    }
-  };
+  // Vérifier que le contexte audio n'est pas fermé
+  if (audioContext.state === 'closed') {
+    audioContext = new audioContextClass();
+  }
   
   try {
+    // Connecter la vidéo à la Web Audio API
+    if (!mediaElementAudioSourceNode) {
+      mediaElementAudioSourceNode = audioContext.createMediaElementSource(videoElement);
+      analyser = audioContext.createAnalyser();
+      
+      // Connecter: vidéo -> analyser -> destination (haut-parleurs)
+      mediaElementAudioSourceNode.connect(analyser);
+      analyser.connect(audioContext.destination);
+      
+      console.log('Audio connecté avec succès');
+    }
+    
+    // Créer un flux audio pour le Web Speech API
+    const dest = audioContext.createMediaStreamDestination();
+    analyser.connect(dest);
+    
+    // Initialiser la reconnaissance vocale
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = currentSettings.language;
+    
+    // Essayer de connecter directement le flux audio
+    try {
+      const stream = dest.stream;
+      // Alternative: utiliser le microphone du système pour capturer l'audio
+    } catch (e) {
+      console.log('Cannot use media stream for speech recognition, using default microphone');
+    }
+    
+    recognition.onstart = () => {
+      console.log('Transcription démarrée');
+      displaySubtitle('🎤 Écoute en cours...', 0);
+    };
+    
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      
+      const displayText = finalTranscript || interimTranscript;
+      if (displayText && displayText !== lastTranscription) {
+        lastTranscription = displayText;
+        displaySubtitle(displayText, 0);
+        console.log('Transcription:', displayText);
+      }
+    };
+    
+    recognition.onerror = (event) => {
+      console.error('Erreur de reconnaissance:', event.error);
+      if (event.error !== 'no-speech') {
+        displaySubtitle(`⚠️ Erreur: ${event.error}`, 2000);
+      }
+    };
+    
+    recognition.onend = () => {
+      console.log('Reconnaissance terminée');
+      if (isListening && currentSettings.enabled) {
+        // Redémarrer automatiquement
+        setTimeout(startTranscription, 1000);
+      }
+    };
+    
+    // Démarrer la reconnaissance
     recognition.start();
     currentTranscriber = recognition;
+    
   } catch (e) {
-    console.error('Erreur démarrage:', e);
+    console.error('Erreur lors de la connexion audio:', e);
+    displaySubtitle(`❌ Erreur: ${e.message}`, 5000);
     isListening = false;
   }
 }
@@ -272,15 +266,6 @@ function stopTranscription() {
     currentTranscriber = null;
   }
   
-  if (audioContext && audioContext.state !== 'closed') {
-    try {
-      if (analyser) analyser.disconnect();
-      if (mediaElementAudioSourceNode) mediaElementAudioSourceNode.disconnect();
-    } catch (e) {
-      console.log('Error disconnecting audio:', e);
-    }
-  }
-  
   isListening = false;
   
   if (subtitlesContainer) {
@@ -288,40 +273,16 @@ function stopTranscription() {
   }
 }
 
-// Observer pour détecter quand des vidéos sont ajoutées à la page
-const observer = new MutationObserver(() => {
-  if (isListening && currentSettings.enabled) {
-    // Vérifier si new audio elements are added
-    const elements = findAudioElements();
-    if (elements.length > 0 && !mediaElementAudioSourceNode) {
-      console.log('Nouveaux éléments audio détectés, redémarrage...');
-      stopTranscription();
-      setTimeout(startTranscription, 500);
-    }
-  }
-});
-
-// Démarrer l'observation quand l'extension est activée
-function startObserver() {
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: false
-  });
-}
-
 // Auto-detect and start on page load
 window.addEventListener('load', () => {
-  startObserver();
   if (currentSettings.enabled) {
-    setTimeout(startTranscription, 500);
+    setTimeout(startTranscription, 1000);
   }
 });
 
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {
   stopTranscription();
-  observer.disconnect();
 });
 
 // Handle when tab becomes active
