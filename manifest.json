@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Auto Subtitles",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Ajoute des sous-titres automatiques aux vidéos avec transcription en temps réel",
   "permissions": [
     "scripting",
     "activeTab",
-    "storage"
+    "storage",
+    "tabCapture",
+    "microphone"
   ],
   "host_permissions": [
     "<all_urls>"
