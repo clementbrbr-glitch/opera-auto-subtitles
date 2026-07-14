@@ -3,8 +3,10 @@ let currentTranscriber = null;
 let isListening = false;
 let subtitlesContainer = null;
 let audioContext = null;
-let mediaStreamAudioSourceNode = null;
+let mediaElementAudioSourceNode = null;
 let analyser = null;
+let splitter = null;
+let processor = null;
 
 let currentSettings = {
   enabled: false,
@@ -123,28 +125,36 @@ function displaySubtitle(text, duration = 3000) {
   }
 }
 
-// Capture audio système
-async function captureAudioSystem() {
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-      video: false
-    });
-    
-    return stream;
-  } catch (err) {
-    console.error('Erreur capture audio système:', err);
-    if (err.name === 'NotAllowedError') {
-      displaySubtitle('❌ Permission d\'accès à l\'audio refusée', 5000);
-    } else if (err.name === 'NotFoundError') {
-      displaySubtitle('❌ Aucun flux audio trouvé', 5000);
+// Trouver les éléments audio/vidéo sur la page
+function findAudioElements() {
+  const elements = [];
+  
+  // Chercher les éléments <video>
+  document.querySelectorAll('video').forEach(video => {
+    if (video.readyState > 0) {
+      elements.push(video);
     }
-    return null;
-  }
+  });
+  
+  // Chercher les éléments <audio>
+  document.querySelectorAll('audio').forEach(audio => {
+    if (audio.readyState > 0) {
+      elements.push(audio);
+    }
+  });
+  
+  // Chercher les iframes avec contenu média
+  document.querySelectorAll('iframe').forEach(iframe => {
+    try {
+      if (iframe.src && (iframe.src.includes('youtube') || iframe.src.includes('netflix') || iframe.src.includes('twitch'))) {
+        elements.push(iframe);
+      }
+    } catch (e) {
+      console.log('Cannot access iframe:', e);
+    }
+  });
+  
+  return elements;
 }
 
 // Web Speech API Transcription
@@ -160,79 +170,96 @@ function startTranscription() {
   
   createSubtitleContainer();
   isListening = true;
-  displaySubtitle('⏳ Sélectionnez la source audio...', 0);
   
-  // D'abord essayer de capturer l'audio système
-  captureAudioSystem().then(stream => {
-    if (!stream) {
-      isListening = false;
-      return;
-    }
-    
-    // Créer AudioContext
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    mediaStreamAudioSourceNode = audioContext.createMediaStreamSource(stream);
-    analyser = audioContext.createAnalyser();
-    mediaStreamAudioSourceNode.connect(analyser);
-    
-    // Initialiser la reconnaissance vocale
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = currentSettings.language;
-    
-    // Créer un processeur pour router l'audio
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
-    analyser.connect(processor);
-    processor.connect(audioContext.destination);
-    
-    recognition.onstart = () => {
-      console.log('Transcription démarrée');
-      displaySubtitle('🎤 Écoute de l\'audio système...', 0);
-    };
-    
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-      
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' ';
-        } else {
-          interimTranscript += transcript;
-        }
-      }
-      
-      const displayText = finalTranscript || interimTranscript;
-      if (displayText) {
-        displaySubtitle(displayText, 0);
-      }
-    };
-    
-    recognition.onerror = (event) => {
-      console.error('Erreur:', event.error);
-      if (event.error !== 'no-speech') {
-        displaySubtitle(`⚠️ Erreur: ${event.error}`, 3000);
-      }
-    };
-    
-    recognition.onend = () => {
-      console.log('Transcription terminée');
-      if (isListening && currentSettings.enabled) {
-        setTimeout(startTranscription, 1000);
-      }
-    };
-    
+  // Chercher les éléments audio/vidéo
+  const audioElements = findAudioElements();
+  
+  if (audioElements.length === 0) {
+    displaySubtitle('⏳ En attente d\'audio...', 0);
+  } else {
+    displaySubtitle('🎤 Capture de l\'audio...', 0);
+  }
+  
+  // Créer AudioContext
+  const audioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!audioContext) {
+    audioContext = new audioContextClass();
+  }
+  
+  // Essayer de connecter les éléments audio trouvés
+  let audioConnected = false;
+  
+  audioElements.forEach(element => {
     try {
-      recognition.start();
-      currentTranscriber = recognition;
+      if (element.tagName === 'VIDEO' || element.tagName === 'AUDIO') {
+        mediaElementAudioSourceNode = audioContext.createMediaElementAudioSource(element);
+        analyser = audioContext.createAnalyser();
+        mediaElementAudioSourceNode.connect(analyser);
+        analyser.connect(audioContext.destination);
+        audioConnected = true;
+        console.log('Audio connecté depuis', element.tagName);
+      }
     } catch (e) {
-      console.error('Erreur démarrage:', e);
-      isListening = false;
+      console.error('Erreur connexion audio:', e);
     }
   });
+  
+  // Initialiser la reconnaissance vocale
+  const recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = currentSettings.language;
+  
+  recognition.onstart = () => {
+    console.log('Transcription démarrée');
+    if (audioConnected) {
+      displaySubtitle('🎤 Écoute de l\'audio en cours...', 0);
+    } else {
+      displaySubtitle('🎤 Écoute (en attente d\'audio)...', 0);
+    }
+  };
+  
+  recognition.onresult = (event) => {
+    let interimTranscript = '';
+    let finalTranscript = '';
+    
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      
+      if (event.results[i].isFinal) {
+        finalTranscript += transcript + ' ';
+      } else {
+        interimTranscript += transcript;
+      }
+    }
+    
+    const displayText = finalTranscript || interimTranscript;
+    if (displayText) {
+      displaySubtitle(displayText, 0);
+    }
+  };
+  
+  recognition.onerror = (event) => {
+    console.error('Erreur:', event.error);
+    if (event.error !== 'no-speech') {
+      displaySubtitle(`⚠️ Erreur: ${event.error}`, 3000);
+    }
+  };
+  
+  recognition.onend = () => {
+    console.log('Transcription terminée');
+    if (isListening && currentSettings.enabled) {
+      setTimeout(startTranscription, 1000);
+    }
+  };
+  
+  try {
+    recognition.start();
+    currentTranscriber = recognition;
+  } catch (e) {
+    console.error('Erreur démarrage:', e);
+    isListening = false;
+  }
 }
 
 function stopTranscription() {
@@ -245,9 +272,13 @@ function stopTranscription() {
     currentTranscriber = null;
   }
   
-  if (audioContext) {
-    audioContext.close();
-    audioContext = null;
+  if (audioContext && audioContext.state !== 'closed') {
+    try {
+      if (analyser) analyser.disconnect();
+      if (mediaElementAudioSourceNode) mediaElementAudioSourceNode.disconnect();
+    } catch (e) {
+      console.log('Error disconnecting audio:', e);
+    }
   }
   
   isListening = false;
@@ -257,16 +288,40 @@ function stopTranscription() {
   }
 }
 
+// Observer pour détecter quand des vidéos sont ajoutées à la page
+const observer = new MutationObserver(() => {
+  if (isListening && currentSettings.enabled) {
+    // Vérifier si new audio elements are added
+    const elements = findAudioElements();
+    if (elements.length > 0 && !mediaElementAudioSourceNode) {
+      console.log('Nouveaux éléments audio détectés, redémarrage...');
+      stopTranscription();
+      setTimeout(startTranscription, 500);
+    }
+  }
+});
+
+// Démarrer l'observation quand l'extension est activée
+function startObserver() {
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: false
+  });
+}
+
 // Auto-detect and start on page load
 window.addEventListener('load', () => {
+  startObserver();
   if (currentSettings.enabled) {
-    startTranscription();
+    setTimeout(startTranscription, 500);
   }
 });
 
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {
   stopTranscription();
+  observer.disconnect();
 });
 
 // Handle when tab becomes active
